@@ -4,7 +4,8 @@ from tqdm import tqdm
 import multiprocessing as mp
 import threading as td
 from time import sleep
-import secrets,pickle, socket, os
+
+import secrets,pickle, socket, os, signal
 import configparser
 import dill
 import progressbar
@@ -14,17 +15,12 @@ import dill
 CHUNKSIZE = 32
 URL = 'http://localhost:5000'
 IPV6_URL = 'https://api64.ipify.org/'
-HOME_URL = f'{os.path.expanduser("~")}/.bluefang/downloads/'
-PORT = 1231
+HOME_URL = f'{os.path.expanduser("~")}/.bluefang/downloads1/'
+PORT = 11290
 
-
-manager = mp.Manager()
-config = configparser.ConfigParser()
-dlock = mp.Lock()
-pobjs = {}
     
-
 class Downloader():
+    dcheck = False
     
     def __init__(self, code, url, dwnpath, partdict = None):
         self.code = code
@@ -40,15 +36,17 @@ class Downloader():
         
     def ignition(self, partdict = None):
         if partdict :
-            self.partdict = manager.list(partdict)
+            self.partdict = partdict
         else:
-            self.partdict = manager.list([0, 0, self.length-1, self.length])
+            self.partdict = [0, 0, self.length-1, self.length]
         self.name = self.partdict[0]
         
     def save(self):
-        pickle.dump([self.code,self.url,self.dwnpath,list(self.partdict)],open(HOME_URL+self.code,'wb'))
-                
-    def start(self, dlock):
+        #pickle.dump([self.code,self.url,self.dwnpath,list(self.partdict)],open(HOME_URL+self.code,'wb'))
+        Manager.backup(dobjs, 'dobjs')
+        
+    def start(self):
+        global _dcheck
         if(self.partdict[1]>self.partdict[2]):
             return 0
         
@@ -58,14 +56,15 @@ class Downloader():
         
         with open(f'{self.dwnpath}/{self.name}','ab') as file:
             for chunk in r.iter_content(CHUNKSIZE*1024):
-                #dlock.acquire()
+                if self.dcheck :
+                    self.dcheck = False
+                    print('Terminated')
+                    return
                 self.partdict[1]+=len(chunk)
                 self.partdict[3]-=len(chunk)
                 file.write(chunk)
                 self.save()
                 pbar.update(len(chunk))
-                #dlock.release()
-        
         pbar.close()
         
 class TCPConnector():
@@ -75,32 +74,32 @@ class TCPConnector():
         self.port = PORT
         
     def listen(self, n_cli = 5):
-        self.sock.bind(('', self.port))
-        self.sock.listen(n_cli)
-        print ("socket is listening")
-        while True:  
-            c_sock, addr = self.sock.accept()      
-            print ('Got connection from', addr )
-            dlock.acquire()
-            code = pickle.loads(c_sock.recv(1024))
-            dobj = dobjs.get(code)
-            if dobj: 
-                c_sock.send(pickle.dumps(list(dobj.partdict)))
-                data = pickle.loads(c_sock.recv(1024))
-                if(data > 0):
-                    print('Process Restart !')
-                    if code in pobjs:
-                        pobjs[code].terminate()
-                        pobjs[code] = None
-                    dobj.partdict[2] = data
-                    dobj.partdict[3] = dobj.partdict[2] - dobj.partdict[1]
-                    if code not in pobjs:
-                        pobjs[code] = mp.Process(target=dobj.start, args=(dlock,))
-                        pobjs[code].start()
-            c_sock.close()
-            dlock.release()
-            print ('Terminated connection from', addr )
-                 
+        def inner(self, n_cli):
+            self.sock.bind(('', self.port))
+            self.sock.listen(n_cli)
+            print ("socket is listening")
+            while True:
+                c_sock, addr = self.sock.accept()      
+                print ('Got connection from', addr )
+                code = pickle.loads(c_sock.recv(1024))
+                dobj = dobjs.get(code)
+                if dobj: 
+                    c_sock.send(pickle.dumps(list(dobj.partdict)))
+                    data = pickle.loads(c_sock.recv(1024))
+                    if(data > 0):
+                        print('Process Restart !')
+                        if dobj.dcheck:
+                            Manager.dwnload_kill(code)
+                            dobj.partdict[2] = data
+                            dobj.partdict[3] = dobj.partdict[2] - dobj.partdict[1]
+                            Manager.dwnload_strt(code)
+                        else:
+                            dobj.partdict[2] = data
+                            dobj.partdict[3] = dobj.partdict[2] - dobj.partdict[1]
+                c_sock.close()
+                print ('Terminated connection from', addr )
+        td.Thread(target = inner, args = (self,n_cli,), daemon = True).start()
+        
     def speak(self, ipv6, code, rmid=-1):
         with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as sock:
             sock.connect((ipv6, self.port, 0, 0))
@@ -111,7 +110,7 @@ class TCPConnector():
         
         
 class Manager():
-    global dobjs, pobjs
+    global dobjs
     
     pobjs = {}
     dobjs = {}
@@ -131,24 +130,19 @@ class Manager():
             [ dobjs.update({code:Downloader(code,*args)}) for code, *args in dobjs_red ]
         
     def on_start(self):
-        self.t1 = td.Thread(target=self.tcpobj.listen, daemon=True)
-        self.t1.start()
+        self.tcpobj.listen()
         
-    def dwnload_strt(self, code):
-        global pobjs
-        if code not in pobjs:
-            pobjs[code] = mp.Process(target=dobjs[code].start, args=(dlock,))
-            pobjs[code].start()
+    @staticmethod
+    def dwnload_strt(code):
+        td.Thread(target=dobjs[code].start, daemon = True).start()
     
-    def dwnload_kill(self, code):
-        global pobjs
-        if code in pobjs:
-            print(code)
-            pobjs[code].terminate()
-            print(pobjs[code])
-            del pobjs[code]
+    @staticmethod       
+    def dwnload_kill(code):
+        if not dobjs[code].dcheck:
+            dobjs[code].dcheck = True
+            print('Terminated')
     
-    def new(self, url, dwnpath):
+    def new(self, url, dwnpath, partdict=None):
         apiobj = APIHandler(url)
         code = apiobj.create()
         self.apiobjs[code] = apiobj
@@ -258,11 +252,9 @@ class APIHandler():
         except Exception as e:
             return None
         
-
-        
 if __name__ == '__main__' :
     
-    durl = 'https://file-examples-com.github.io/uploads/2017/04/file_example_MP4_1920_18MG.mp4'
+    durl = 'https://file-examples-com.github.io/uploads/2018/04/file_example_MOV_1920_2_2MB.mov'
     dwnpath = '/home/mrlittle/bluefang'
     
     tcpobj = TCPConnector()

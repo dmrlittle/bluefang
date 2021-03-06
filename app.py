@@ -21,8 +21,8 @@ from kivy.uix.accordion import Accordion, AccordionItem
 from kivy.core.window import Window
 from kivy.uix.image import Image
 
-
-from master import Manager, APIHandler, TCPConnector, dobjs, pobjs
+import time
+from master import Manager, APIHandler, TCPConnector, dobjs
 
 class BlueFangApp(App):
     crnt_code = None
@@ -52,10 +52,10 @@ class BlueFangApp(App):
         self.info_list(ti2)
         
         abv =  ActionView()
-        abv.add_widget(ActionPrevious(title='blueFang', with_previous=False))
+        abv.add_widget(ActionPrevious(title='peer1', with_previous=False))
         abv.add_widget(ActionOverflow())
         abv.add_widget(ActionButton(text = 'New', on_press = self.new))
-        abv.add_widget(ActionButton(text = 'Join', on_press = self.new))
+        abv.add_widget(ActionButton(text = 'Join', on_press = self.join))
         #abb = ActionButton()
         #abv.add_widget(abb)
         ab.add_widget(abv)
@@ -82,7 +82,7 @@ class BlueFangApp(App):
         self.ilist = ti1
         
         abv =  ActionView()
-        abv.add_widget(ActionPrevious(title='blueFang', with_previous=False))
+        abv.add_widget(ActionPrevious(title='peer1', with_previous=False))
         abv.add_widget(ActionOverflow())
         abv.add_widget(ActionButton(text = 'Back', on_press = back))
         #abb = ActionButton()
@@ -111,9 +111,9 @@ class BlueFangApp(App):
         self.plist = ti1
         
         abv =  ActionView()
-        abv.add_widget(ActionPrevious(title='blueFang', with_previous=False))
+        abv.add_widget(ActionPrevious(title='peer1', with_previous=False))
         abv.add_widget(ActionOverflow())
-        abv.add_widget(ActionButton(text = 'Back', on_press = back))
+        abv.add_widget(ActionButton(text = '4Back', on_press = back))
         #abb = ActionButton()
         #abv.add_widget(abb)
         ab.add_widget(abv)
@@ -122,11 +122,13 @@ class BlueFangApp(App):
         layout11.add_widget(tp)
         layout1.add_widget(layout11)
         layout1.add_widget(ab)
+        #layout1 = Label(text='hi')
         
         return layout1
         
     def build(self):
         
+        self.title='Peer1'
         sm = ScreenManager()
         self.sm = sm
         main = Screen(name='main')
@@ -151,9 +153,12 @@ class BlueFangApp(App):
         lay = ScrollView()
         lay.add_widget(layout112) 
         widget.add_widget(lay)
+        print('')
         for code in dobjs:
-            layout112.add_widget(Button(text=code, size_hint_y=None, size=(0,50), on_press=dwn_sel))
-    
+            if code:
+                layout112.add_widget(Button(text=code, size_hint_y=None, size=(0,50), on_press=dwn_sel))
+        layout112.add_widget(Button(text=str(time.time()), size_hint_y=None, size=(0,50), on_press=dwn_sel))
+                
     def info_list(self, widget):
         def dwn_sel(btn):
             self.crnt_code = btn.text
@@ -165,7 +170,8 @@ class BlueFangApp(App):
         lay.add_widget(layout112) 
         widget.add_widget(lay)
         for code in self.manobj.apiobjs:
-            layout112.add_widget(Button(text=code, size_hint_y=None, size=(0,50), on_press=dwn_sel))
+            if code:
+                layout112.add_widget(Button(text=code, size_hint_y=None, size=(0,50), on_press=dwn_sel))
             
     def peer_list(self, widget):
         l1 = None
@@ -173,7 +179,7 @@ class BlueFangApp(App):
         ti1 = None
         def refresh_status(btn):
             nonlocal l1
-            l1.text = f'{self.tcpobj.speak("localhost","707211bc6a9d")}'
+            l1.text = f'{self.tcpobj.speak("localhost",self.crnt_code)}'
             
         def share_load(btn):
             nonlocal ti1, peer
@@ -187,13 +193,15 @@ class BlueFangApp(App):
             layout11 = BoxLayout(orientation = 'horizontal', size_hint=(1,.2))
             layout12 = BoxLayout(orientation = 'horizontal', size_hint=(1,.2))
             layout13 = BoxLayout(orientation = 'horizontal')
-            layout12.add_widget(Label(text='Share (Bytes)',size_hint=(.4, .6)))
-            ti1 = TextInput(size_hint=(.4, .6))
+            layout12.add_widget(Label(text='Share (Bytes)',size_hint=(.3, .6)))
+            ti1 = TextInput(size_hint=(.33, .6))
             layout12.add_widget(ti1)
-            layout12.add_widget(Button(text='Confirm', size_hint=(.2, .6), on_press = share_load))
+            layout12.add_widget(Label(text='', size_hint=(.07, .6)))
+            layout12.add_widget(Button(text='Confirm', size_hint=(.23, .6), on_press = share_load))
+            layout12.add_widget(Label(text='', size_hint=(.07, .6)))
             l1 = Label(text=f'Download Status : Unknown', size_hint=(.7, .6))
             layout11.add_widget(l1)
-            layout11.add_widget(Button(text='Refresh', size_hint=(.15, .6), on_press = refresh_status))
+            layout11.add_widget(Button(text='Refresh', size_hint=(.23, .6), on_press = refresh_status))
             layout11.add_widget(Label(text='', size_hint=(.07, .6)))
             layout1.add_widget(btn)
             layout1.add_widget(layout11)
@@ -206,16 +214,11 @@ class BlueFangApp(App):
         self.manobj.fetch(self.crnt_code)
         ac = Accordion(orientation='vertical')
         layout112.add_widget(ac)
+        print(self.manobj.peerdict)
         for ind, peer in enumerate(self.manobj.peerdict[self.crnt_code]):
             item = AccordionItem(title=f'Peer {ind+1}')
-            item.add_widget(peer_item(Button(text=f'Range : {peer[1][0]} - {peer[1][1]}', size_hint_y=None)))
-            item1 = AccordionItem(title='List1')
-            item1.add_widget(peer_item(Button(text=f'Range : {peer[1][0]} - {peer[1][1]}', size_hint_y=None)))
-            item2 = AccordionItem(title='List2')
-            item2.add_widget(peer_item(Button(text=f'Range : {peer[1][0]} - {peer[1][1]}', size_hint_y=None)))
+            item.add_widget(peer_item(Button(text=f'Range : {peer[1][0]} - {peer[1][1]}', size_hint_y=None)))            
             ac.add_widget(item)
-            ac.add_widget(item1)
-            ac.add_widget(item2)
     
     def dwnload_tab(self, widget):
         def refresh(btn):
@@ -259,11 +262,10 @@ class BlueFangApp(App):
         global pobjs
         if btn.text == 'Start':
             btn.text = 'Stop'
-            self.manobj.dwnload_strt(self.crnt_code)
+            Manager.dwnload_strt(self.crnt_code)
         else:
             btn.text = 'Start'
-            print('koko')
-            self.manobj.dwnload_kill(self.crnt_code)
+            Manager.dwnload_kill(self.crnt_code)
         
     def new(self, btn):
         def path_sel(btn):
@@ -275,6 +277,9 @@ class BlueFangApp(App):
             dwnpath = l2.text
             print(url, dwnpath)
             self.manobj.new(url, dwnpath)
+            pop.dismiss()
+            self.sm.current = 'single_dwnload'
+            self.sm.current = 'main'
         
         pop = Popup(size_hint=(.8, .4), size=(500, 100))
         layout_s1 = BoxLayout(orientation='vertical', size_hint=(1,1))
@@ -309,6 +314,34 @@ class BlueFangApp(App):
         layout1.add_widget(layout12)
         layout1.add_widget(layout13)
         pop.title = 'NEW DOWNLOAD'
+        pop.content = layout1
+        pop.open()
+    
+    def join(self, btn):
+        
+        def dwnload(btn):
+            code = ti1.text
+            print(code)
+            self.manobj.join(code)
+            self.sm.current = 'main'
+        
+        pop = Popup(size_hint=(.8, .4), size=(500, 100))
+        layout1 = BoxLayout(orientation='vertical')
+        layout11 = BoxLayout(orientation='horizontal', size_hint=(1, .3))
+        layout12 = BoxLayout(orientation='horizontal', size_hint=(1, .3))
+        layout13 = BoxLayout(orientation='horizontal', size_hint=(1, .4))
+        
+        layout11.add_widget(Label(text='CODE', size_hint=(.2, .6)))
+        ti1 = TextInput(size_hint=(.6, .6))
+        layout11.add_widget(ti1)
+        layout11.add_widget(Label(text='', size_hint=(.07, .6)))
+        layout13.add_widget(Button(text='DOWNLOAD',size_hint=(.4, .6), on_press=dwnload))
+        layout13.add_widget(Button(text='CANCEL',size_hint=(.4, .6), on_press=pop.dismiss))
+        
+        layout1.add_widget(layout11)
+        layout1.add_widget(layout12)
+        layout1.add_widget(layout13)
+        pop.title = 'JOIN DOWNLOAD'
         pop.content = layout1
         pop.open()
     
